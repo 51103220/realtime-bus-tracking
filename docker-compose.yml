@@ -1,0 +1,284 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared Flink properties injected into both jobmanager and taskmanager
+# ─────────────────────────────────────────────────────────────────────────────
+x-flink-common: &flink-common
+  image: apache/flink:1.19.1-scala_2.12-java17
+  platform: linux/amd64
+  environment:
+    FLINK_PROPERTIES: |
+      jobmanager.rpc.address: flink-jobmanager
+      taskmanager.numberOfTaskSlots: 4
+      state.backend: hashmap
+      state.checkpoints.dir: file:///tmp/flink-checkpoints
+      execution.checkpointing.interval: 30000
+      metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+      metrics.reporter.prom.port: 9249
+
+services:
+
+  # ── Zookeeper ───────────────────────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    hostname: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Kafka ───────────────────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "29092:29092"   # external (host → Docker)
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_HOURS: 72
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Kafka topic init (runs once, exits) ─────────────────────────────────────
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: >
+      bash -c "
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists
+          --topic ${KAFKA_TOPIC:-bus-gps-events}
+          --partitions ${KAFKA_PARTITIONS:-3}
+          --replication-factor ${KAFKA_REPLICATION_FACTOR:-1} &&
+        echo 'Topic ${KAFKA_TOPIC:-bus-gps-events} ready.'
+      "
+    restart: "no"
+
+  # ── Kafka UI ────────────────────────────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── MinIO ───────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MinIO bucket init (runs once, exits) ────────────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin} &&
+        mc mb --ignore-existing local/${MINIO_BUCKET:-bus-history} &&
+        echo 'Bucket ${MINIO_BUCKET:-bus-history} ready.'
+      "
+    restart: "no"
+
+  # ── Flink JobManager ────────────────────────────────────────────────────────
+  flink-jobmanager:
+    <<: *flink-common
+    hostname: flink-jobmanager
+    command: jobmanager
+    ports:
+      - "8081:8081"    # Flink Web UI + REST API
+      - "9249:9249"    # Prometheus metrics
+    volumes:
+      - ./flink-job/target/bus-tracking-job-1.0.0.jar:/opt/flink/usrlib/bus-tracking-job.jar:ro
+      - ${DATASET_PATH}/vehicle_route_mapping.csv:/opt/flink/data/vehicle_route_mapping.csv:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/overview"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  # ── Flink TaskManager ───────────────────────────────────────────────────────
+  flink-taskmanager:
+    <<: *flink-common
+    hostname: flink-taskmanager
+    command: taskmanager
+    ports:
+      - "9250:9249"    # Prometheus metrics (host port offset to avoid clash)
+    volumes:
+      - ${DATASET_PATH}/vehicle_route_mapping.csv:/opt/flink/data/vehicle_route_mapping.csv:ro
+    environment:
+      # Runtime env vars read by BusTrackingJob via System.getenv()
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-bus-gps-events}
+      ROUTE_MAPPING_PATH: /opt/flink/data/vehicle_route_mapping.csv
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      BUS_STATE_TTL_SECONDS: ${BUS_STATE_TTL_SECONDS:-3600}
+      DEDUP_TTL_SECONDS: ${DEDUP_TTL_SECONDS:-60}
+      WATERMARK_DELAY_SECONDS: ${WATERMARK_DELAY_SECONDS:-30}
+      WINDOW_SIZE_SECONDS: ${WINDOW_SIZE_SECONDS:-60}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-bus-history}
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+
+  # ── Flink job submitter (runs once, exits) ──────────────────────────────────
+  flink-job-submitter:
+    image: curlimages/curl:latest
+    depends_on:
+      flink-taskmanager:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./flink-job/target/bus-tracking-job-1.0.0.jar:/job/bus-tracking-job.jar:ro
+      - ./scripts/submit-flink-job.sh:/submit.sh:ro
+    entrypoint: ["sh", "/submit.sh"]
+    restart: "no"
+    environment:
+      FLINK_URL: http://flink-jobmanager:8081
+      JAR_PATH: /job/bus-tracking-job.jar
+      ENTRY_CLASS: com.bustrack.BusTrackingJob
+      FLINK_PARALLELISM: ${FLINK_PARALLELISM:-2}
+
+  # ── Kafka GPS producer ──────────────────────────────────────────────────────
+  producer:
+    build: ./producer
+    depends_on:
+      flink-job-submitter:
+        condition: service_completed_successfully
+    volumes:
+      - ${DATASET_PATH}:/data:ro
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-bus-gps-events}
+      REPLAY_SPEED: ${REPLAY_SPEED:-0}
+      DATA_PATH: /data
+    restart: on-failure
+
+  # ── FastAPI backend ─────────────────────────────────────────────────────────
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-bus-history}
+    restart: on-failure
+
+  # ── React dashboard ─────────────────────────────────────────────────────────
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+  # ── Kafka exporter (Prometheus) ─────────────────────────────────────────────
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    command:
+      - "--kafka.server=kafka:9092"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: on-failure
+
+  # ── Redis exporter (Prometheus) ─────────────────────────────────────────────
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Prometheus ──────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - kafka-exporter
+      - redis-exporter
+
+  # ── Grafana ─────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus

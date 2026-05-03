@@ -1,0 +1,115 @@
+{
+  "title": "Bus GPS Pipeline",
+  "uid": "bus-pipeline",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Flink Records In / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(flink_taskmanager_job_task_operator_numRecordsInPerSecond[1m])",
+          "legendFormat": "records/s in"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Flink Records Out / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(flink_taskmanager_job_task_operator_numRecordsOutPerSecond[1m])",
+          "legendFormat": "records/s out"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Kafka Consumer Lag",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(kafka_consumergroup_lag) by (consumergroup)",
+          "legendFormat": "{{consumergroup}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Active Buses (Redis ZCARD)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 6, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "redis_db_keys{db=\"db0\"}",
+          "legendFormat": "keys"
+        }
+      ],
+      "options": { "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "id": 5,
+      "title": "Redis Commands / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 4, "y": 6, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(redis_commands_total[1m])",
+          "legendFormat": "{{cmd}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Flink Checkpoint Duration (ms)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 6, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "flink_jobmanager_job_lastCheckpointDuration",
+          "legendFormat": "last checkpoint ms"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Kafka Messages In / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 10, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(kafka_topic_partition_current_offset[1m])",
+          "legendFormat": "{{topic}} p{{partition}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Redis Memory Used (MB)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 10, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "redis_memory_used_bytes / 1024 / 1024",
+          "legendFormat": "used MB"
+        }
+      ]
+    }
+  ]
+}

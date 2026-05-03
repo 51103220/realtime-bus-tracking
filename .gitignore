@@ -1,0 +1,44 @@
+# Claude Code
+.claude/
+
+# Flink build output
+flink-job/target/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+.eggs/
+
+# Jupyter
+notebooks/.ipynb_checkpoints/
+*.ipynb_checkpoints/
+/tmp/*.html
+/tmp/*.png
+
+# Node / Dashboard
+dashboard/node_modules/
+dashboard/dist/
+
+# Environment — contains local paths and credentials
+.env
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Docker volumes (if accidentally exported)
+volumes/
+
+# Logs
+*.log
