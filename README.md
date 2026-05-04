@@ -1,14 +1,32 @@
-# HCMC Real-Time Bus Tracking — Big Data Project Summary
+# Ho Chi Minh City Real-Time Bus Tracking
 
 **Dataset:** 32 GB, 517 JSON files, ~109 M GPS records, 440 buses, 31 routes, 50 days (March 20 – May 10 2025)  
 **Stack:** Kafka → Flink (Java 17) → Redis + MinIO → FastAPI + React/Leaflet → Prometheus + Grafana  
 **Deployment:** Single `docker-compose up --build` — 17 Docker services, no cloud required
 
 ## Quick Start
+### Required ports
+
+The following host ports must be free before running `./run.sh`. Check for conflicts with `lsof -iTCP:<port> -sTCP:LISTEN`.
+
+| Port | Service | Used for |
+|------|---------|----------|
+| **2182** | Zookeeper | Kafka coordination (host-side only; internal port is 2181) |
+| **29092** | Kafka | External broker access from host tools |
+| **8888** | Kafka UI | Topic browser |
+| **6379** | Redis | Current bus state, Pub/Sub, anomaly list |
+| **9000** | MinIO | S3-compatible API (SDK access) |
+| **9001** | MinIO | Web console |
+| **8081** | Flink JobManager | Web UI + REST API |
+| **9249** | Flink JobManager | Prometheus metrics scrape |
+| **9250** | Flink TaskManager | Prometheus metrics scrape |
+| **8000** | FastAPI | REST endpoints + WebSocket |
+| **3002** | Dashboard | React + Leaflet live map |
+| **9090** | Prometheus | Metrics storage + query |
+| **3001** | Grafana | Monitoring dashboard |
 
 ```bash
-# Clone / unzip the project, then:
-cd big-data
+
 ./run.sh          # checks prerequisites, builds JAR, starts all 17 services, waits until ready
 ```
 
@@ -23,7 +41,7 @@ See `./run.sh --help` for additional modes:
 ./run.sh --status   — show which services are up
 ```
 
-**One thing to configure before running:** open `.env` and set `DATASET_PATH` to where the bus GPS dataset lives on your machine:
+**Environment Config:** open `.env` and set `DATASET_PATH` to where the bus GPS dataset lives on your machine:
 
 ```bash
 # .env
@@ -308,92 +326,6 @@ big-data/
     ├── 03_congestion_heatmap.ipynb   spatial binning + Folium HeatMap
     ├── 04_pca_analysis.ipynb         12-dim PCA, scree plot, loadings heatmap
     └── 05_anomaly_analysis.ipynb     anomaly distribution + temporal clustering
-```
-
----
-
-## Setup & Running the Project
-
-### Required ports
-
-The following host ports must be free before running `./run.sh`. Check for conflicts with `lsof -iTCP:<port> -sTCP:LISTEN`.
-
-| Port | Service | Used for |
-|------|---------|----------|
-| **2182** | Zookeeper | Kafka coordination (host-side only; internal port is 2181) |
-| **29092** | Kafka | External broker access from host tools |
-| **8888** | Kafka UI | Topic browser |
-| **6379** | Redis | Current bus state, Pub/Sub, anomaly list |
-| **9000** | MinIO | S3-compatible API (SDK access) |
-| **9001** | MinIO | Web console |
-| **8081** | Flink JobManager | Web UI + REST API |
-| **9249** | Flink JobManager | Prometheus metrics scrape |
-| **9250** | Flink TaskManager | Prometheus metrics scrape |
-| **8000** | FastAPI | REST endpoints + WebSocket |
-| **3002** | Dashboard | React + Leaflet live map |
-| **9090** | Prometheus | Metrics storage + query |
-| **3001** | Grafana | Monitoring dashboard |
-
-> **Note:** Port 2182 (not 2181) is used for Zookeeper because 2181 is a common default for locally-installed Zookeeper instances. Internal Docker services still communicate on 2181.
-
----
-
-### Prerequisites
-
-Install these before running:
-
-| Tool | Version | Install |
-|---|---|---|
-| Docker Desktop | 4.x+ (must be running) | https://www.docker.com/products/docker-desktop/ |
-| Java (JDK) | 17+ | https://adoptium.net/ or `brew install temurin@17` |
-| Apache Maven | 3.8+ | `brew install maven` |
-| Python | 3.10+ (notebooks only) | https://python.org |
-
-Also ensure ≥ 8 GB RAM and ≥ 5 GB free disk are available for Docker.
-
----
-
-### Step 1 — Set the dataset path
-
-Open `.env` in the project root and update `DATASET_PATH` to where the bus GPS dataset lives on your machine:
-
-```bash
-# .env
-DATASET_PATH=/path/to/BigData-Bus-DataSet   # folder containing sub_raw_*.json files
-```
-
-Optionally adjust replay speed (default is max throughput):
-
-```bash
-REPLAY_SPEED=0      # max throughput — best for demos
-REPLAY_SPEED=1.0    # real-time playback
-REPLAY_SPEED=10     # 10× accelerated
-```
-
----
-
-### Step 2 — Run the script
-
-```bash
-cd big-data
-./run.sh
-```
-The script will:
-1. Verify all prerequisites (Java 17+, Maven, Docker, dataset)
-2. Build the Flink fat JAR (once, ~60s — skipped on subsequent runs if sources unchanged)
-3. Start all 17 Docker services
-4. Wait and poll until every service is ready (Kafka, Flink, MinIO, API, Dashboard, Grafana)
-
----
-
-### Other commands
-
-```bash
-./run.sh --rebuild  # force-rebuild JAR + Docker images, then restart
-./run.sh --logs     # tail live logs from producer, Flink, and API
-./run.sh --status   # show which containers are running
-./run.sh --stop     # stop all containers (data volumes preserved)
-./run.sh --clean    # stop all containers and delete all data volumes (fresh start)
 ```
 
 ---
