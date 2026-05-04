@@ -222,11 +222,11 @@ wait_for_url() {
     echo -e " ${GREEN}ready${RESET}"
 }
 
-wait_for_url "Kafka UI"       "http://localhost:8080"  90
+wait_for_url "Kafka UI"       "http://localhost:8888"  90
 wait_for_url "Flink UI"       "http://localhost:8081/overview" 120
 wait_for_url "MinIO"          "http://localhost:9001"  60
 wait_for_url "API"            "http://localhost:8000/stats" 90
-wait_for_url "Dashboard"      "http://localhost:3000"  90
+wait_for_url "Dashboard"      "http://localhost:3002"  90
 wait_for_url "Grafana"        "http://localhost:3001"  60
 
 # Wait for Flink job to reach RUNNING state
@@ -250,8 +250,8 @@ echo -e "${BOLD}================================================${RESET}"
 echo -e "${BOLD}  Pipeline is live. Open these URLs:           ${RESET}"
 echo -e "${BOLD}================================================${RESET}"
 echo ""
-echo -e "  ${CYAN}Dashboard (live bus map)${RESET}   http://localhost:3000"
-echo -e "  ${CYAN}Kafka UI${RESET}                   http://localhost:8080"
+echo -e "  ${CYAN}Dashboard (live bus map)${RESET}   http://localhost:3002"
+echo -e "  ${CYAN}Kafka UI${RESET}                   http://localhost:8888"
 echo -e "  ${CYAN}Flink UI${RESET}                   http://localhost:8081"
 echo -e "  ${CYAN}MinIO console${RESET}              http://localhost:9001  (minioadmin / minioadmin)"
 echo -e "  ${CYAN}REST API${RESET}                   http://localhost:8000/buses"

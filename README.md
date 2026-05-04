@@ -34,6 +34,8 @@ DATASET_PATH=/path/to/BigData-Bus-DataSet   # must contain sub_raw_*.json files
 
 ## System Architecture
 
+![Pipeline Architecture](architecture.png)
+
 ```
 Bus GPS Files (32 GB)
        │  producer.py — replay at REPLAY_SPEED=0/1.0/N
@@ -312,138 +314,116 @@ big-data/
 
 ## Setup & Running the Project
 
+### Required ports
+
+The following host ports must be free before running `./run.sh`. Check for conflicts with `lsof -iTCP:<port> -sTCP:LISTEN`.
+
+| Port | Service | Used for |
+|------|---------|----------|
+| **2182** | Zookeeper | Kafka coordination (host-side only; internal port is 2181) |
+| **29092** | Kafka | External broker access from host tools |
+| **8888** | Kafka UI | Topic browser |
+| **6379** | Redis | Current bus state, Pub/Sub, anomaly list |
+| **9000** | MinIO | S3-compatible API (SDK access) |
+| **9001** | MinIO | Web console |
+| **8081** | Flink JobManager | Web UI + REST API |
+| **9249** | Flink JobManager | Prometheus metrics scrape |
+| **9250** | Flink TaskManager | Prometheus metrics scrape |
+| **8000** | FastAPI | REST endpoints + WebSocket |
+| **3002** | Dashboard | React + Leaflet live map |
+| **9090** | Prometheus | Metrics storage + query |
+| **3001** | Grafana | Monitoring dashboard |
+
+> **Note:** Port 2182 (not 2181) is used for Zookeeper because 2181 is a common default for locally-installed Zookeeper instances. Internal Docker services still communicate on 2181.
+
+---
+
 ### Prerequisites
 
-| Tool | Version | Check |
+Install these before running:
+
+| Tool | Version | Install |
 |---|---|---|
-| Docker Desktop | 4.x+ (running) | `docker info` |
-| Java (JDK) | 17+ | `java -version` |
-| Apache Maven | 3.8+ | `mvn -version` |
-| Python | 3.10+ (for notebooks) | `python3 --version` |
-| Free RAM | ≥ 8 GB for Docker | Activity Monitor |
-| Free disk | ≥ 5 GB for containers | `df -h` |
+| Docker Desktop | 4.x+ (must be running) | https://www.docker.com/products/docker-desktop/ |
+| Java (JDK) | 17+ | https://adoptium.net/ or `brew install temurin@17` |
+| Apache Maven | 3.8+ | `brew install maven` |
+| Python | 3.10+ (notebooks only) | https://python.org |
 
-> The dataset (32 GB) must already be in local machine
-> The `DATASET_PATH` variable in `.env` points there — change it if your path.
----
-
-### Step 1 — Build the Flink JAR
-
-Run once. Re-run only when you change Java source files.
-
-```bash
-cd /path/to/big-data/flink-job
-mvn clean package -q
-```
-
-Expected output: none (silent with `-q`).  
-Expected file: `target/bus-tracking-job-1.0.0.jar` — should be **~26 MB**.
-
-```bash
-ls -lh target/bus-tracking-job-1.0.0.jar
-# -rw-r--r-- ... 26M ... bus-tracking-job-1.0.0.jar
-```
-
-If the build fails, run without `-q` to see errors:
-```bash
-mvn clean package 2>&1 | tail -30
-```
+Also ensure ≥ 8 GB RAM and ≥ 5 GB free disk are available for Docker.
 
 ---
 
-### Step 2 — Configure Replay Speed (optional)
+### Step 1 — Set the dataset path
 
-Open `.env` in the project root and set `REPLAY_SPEED`:
+Open `.env` in the project root and update `DATASET_PATH` to where the bus GPS dataset lives on your machine:
 
 ```bash
 # .env
-REPLAY_SPEED=0      # max throughput — floods Kafka, best for demos (~5000–10000 records/s)
-REPLAY_SPEED=1.0    # real-time — events play at the exact pace they were recorded
-REPLAY_SPEED=10     # 10× accelerated — 10 minutes of real data plays in 1 minute
+DATASET_PATH=/path/to/BigData-Bus-DataSet   # folder containing sub_raw_*.json files
 ```
 
-All other values in `.env` have safe defaults and do not need to be changed.
-
----
-
-### Step 3 — Start All Services
+Optionally adjust replay speed (default is max throughput):
 
 ```bash
-cd /path/to/big-data
-docker-compose up --build
-```
-
-The `--build` flag rebuilds the producer, API, and dashboard Docker images.  
-Omit it on subsequent runs if you haven't changed those files: `docker-compose up`.
-
-Docker Compose starts 17 services in dependency order. **Do not interrupt during the first ~60 seconds** — Flink, Kafka, and MinIO need to fully initialise before the job is submitted.
-
-To run in the background (detached):
-```bash
-docker-compose up --build -d
-docker-compose logs -f producer flink-taskmanager api   # watch key services
+REPLAY_SPEED=0      # max throughput — best for demos
+REPLAY_SPEED=1.0    # real-time playback
+REPLAY_SPEED=10     # 10× accelerated
 ```
 
 ---
 
-### Step 4 — Verify the Pipeline Started
-
-Watch the terminal output for these milestones:
-
-| Time | Log message | What it means |
-|---|---|---|
-| ~T+10s | `Topic bus-gps-events ready.` | Kafka topic created |
-| ~T+15s | `Bucket bus-history ready.` | MinIO bucket created |
-| ~T+25s | Flink UI responds at `localhost:8081` | JobManager healthy |
-| ~T+30s | `[submitter] TaskManager registered.` | Flink worker online |
-| ~T+35s | `[submitter] Job ... is RUNNING.` | Pipeline active |
-| ~T+40s | `[producer] Processing sub_raw_100.json` | Data flowing |
-
-If `flink-job-submitter` exits with error, check:
-```bash
-docker-compose logs flink-job-submitter
-docker-compose logs flink-jobmanager | tail -20
-```
-
----
-
-### Step 5 — Stop and Clean Up
+### Step 2 — Run the script
 
 ```bash
-docker-compose down          # stop containers, keep data volumes
-docker-compose down -v       # stop containers AND delete all volumes (fresh start)
+cd big-data
+./run.sh
+```
+The script will:
+1. Verify all prerequisites (Java 17+, Maven, Docker, dataset)
+2. Build the Flink fat JAR (once, ~60s — skipped on subsequent runs if sources unchanged)
+3. Start all 17 Docker services
+4. Wait and poll until every service is ready (Kafka, Flink, MinIO, API, Dashboard, Grafana)
+
+---
+
+### Other commands
+
+```bash
+./run.sh --rebuild  # force-rebuild JAR + Docker images, then restart
+./run.sh --logs     # tail live logs from producer, Flink, and API
+./run.sh --status   # show which containers are running
+./run.sh --stop     # stop all containers (data volumes preserved)
+./run.sh --clean    # stop all containers and delete all data volumes (fresh start)
 ```
 
 ---
 
-## Demo Walkthrough — What to Open and What to Observe
-
-Open each URL in a browser tab as you narrate the demo. Suggested order:
+## Demo Walkthrough
 
 ---
 
-### 1. Live Bus Map — `http://localhost:3000`
+### 1. Live Bus Map — `http://localhost:3002`
 
-**What you see:**  
-A dark-themed map of Ho Chi Minh City. Within 5–10 seconds of the producer starting, coloured dots appear across the city — one dot per active bus. Each route gets a deterministic colour (hashed from the route number).
+**Description:**  
+Within 5–10 seconds of the producer starting, coloured dots appear across the city — one dot per active bus. 
 
-**What to do:**
+**Try:**
 - Watch dots appear and shift position as new GPS events arrive via WebSocket
 - Click any dot → sidebar shows: route number, current speed (km/h), ignition / aircon / door status, last seen timestamp
 - The top of the page shows: `● Live — 440 buses` (or the current count)
 - Sidebar fleet summary shows active bus count and a per-route breakdown
 
-**What this demonstrates:**  
+**Processing:**  
 Real-time event streaming from Kafka → Flink → Redis Pub/Sub → WebSocket → React. The map updates without any page refresh — every GPS event pushed by Flink immediately updates the marker.
 
 ---
 
 ### 2. Flink Job Graph — `http://localhost:8081`
 
-**What you see:**  
+**Description:**  
 The Flink Web UI. Click **"Running Jobs"** → click the job named **"Bus GPS Tracking Pipeline"**.
 
-**What to observe:**
+**Observe::**
 - **Job graph** — shows all operators connected in a DAG:
   ```
   Kafka GPS Source
@@ -460,17 +440,17 @@ The Flink Web UI. Click **"Running Jobs"** → click the job named **"Bus GPS Tr
 - Click **"Checkpoints"** tab → shows checkpoint duration (~30s interval), size, alignment lag
 - The **"Watermarks"** metric on the Kafka source shows event-time progress
 
-**What this demonstrates:**  
+**Processing:**  
 Stateful distributed stream processing. The parallelism=2 setting means each operator runs in 2 parallel instances. Point out the checkpoint mechanism — this is what enables fault tolerance and exactly-once dedup state recovery.
 
 ---
 
-### 3. Kafka UI — `http://localhost:8080`
+### 3. Kafka UI — `http://localhost:8888`
 
-**What you see:**  
+**Description:**  
 A web interface for inspecting the Kafka cluster.
 
-**What to observe:**
+**Observe::**
 - Click **"Topics"** → `bus-gps-events` → **"Messages"** tab
   - Messages appearing in real time, partitioned across 3 partitions by vehicle hash
   - Each message key = vehicle hash (guarantees ordering per vehicle)
@@ -479,7 +459,7 @@ A web interface for inspecting the Kafka cluster.
   - **Lag** column should show near-zero — Flink is keeping up with the producer
   - If `REPLAY_SPEED=0`, lag may briefly spike before stabilising
 
-**What this demonstrates:**  
+**Processing:**  
 Partitioned message distribution. Because the producer uses `vehicle_hash` as the Kafka key, all events from one bus always go to the same partition, and Flink's `keyBy(vehicle)` state always lives in the same task slot. This is the foundation of stateful per-vehicle processing.
 
 ---
@@ -488,10 +468,10 @@ Partitioned message distribution. Because the producer uses `vehicle_hash` as th
 
 **Credentials:** `minioadmin` / `minioadmin`
 
-**What you see:**  
+**Description:**  
 The MinIO object browser. Click **"Object Browser"** → **"bus-history"** bucket.
 
-**What to observe:**
+**Observe::**
 - After ~60–90 seconds: folders `2025-03-22/`, `2025-03-23/`, etc. appear (the dataset's event dates, not today's date — this is event-time)
 - Inside each date: `HH-mm/` subfolders → JSON files like `163V_1742636580000.json`
 - Folder `trips/` → one JSON file per completed bus trip (from session windows)
@@ -502,7 +482,7 @@ The MinIO object browser. Click **"Object Browser"** → **"bus-history"** bucke
 - A `TripSegment` object with `tripStart`, `durationSeconds`, `totalDistanceKm`, `stopCount`
 - A `VehicleFeatureVector` object with all 12 features
 
-**What this demonstrates:**  
+**Processing:**  
 Dual-layer storage (Lambda Architecture): Redis holds the real-time "speed layer"; MinIO holds the persistent "batch layer" for retrospective analysis. Three different data structures (raw events, trip segments, feature vectors) are written by three different Flink operators simultaneously.
 
 ---
@@ -511,7 +491,7 @@ Dual-layer storage (Lambda Architecture): Redis holds the real-time "speed layer
 
 **Credentials:** `admin` / `admin` (prompted on first login, skip the change-password screen)
 
-**What you see:**  
+**Description:**  
 Navigate to **Dashboards** → **"Bus GPS Pipeline"** (auto-provisioned).
 
 **8 panels to observe:**
@@ -527,7 +507,7 @@ Navigate to **Dashboards** → **"Bus GPS Pipeline"** (auto-provisioned).
 | **Kafka Messages In/sec** | Per-partition throughput; should be roughly equal across 3 partitions |
 | **Redis Memory Used (MB)** | Grows as more bus states are stored; plateaus when TTL expires old entries |
 
-**What this demonstrates:**  
+**Processing:**  
 Observability. A production big data system is only trustworthy if its internals are visible. Point out that all three layers (Kafka, Flink, Redis) are simultaneously monitored in one dashboard.
 
 ---
@@ -558,7 +538,7 @@ HGETALL route:speed:<routeNo>
 # Returns: avgSpeed, minSpeed, maxSpeed, vehicleCount, windowEndMs
 ```
 
-**What this demonstrates:**  
+**Processing:**  
 The Redis data model — three different structures used simultaneously:
 - `HSET bus:{vehicle}` — hash (structured, field-level access)
 - `ZADD active-buses` — sorted set (score = timestamp, enables time-based queries)
@@ -588,7 +568,7 @@ docker-compose stop producer
 docker-compose start producer
 ```
 
-**What this demonstrates:**  
+**Processing:**  
 The producer's event-time replay faithfully simulates both real-time and accelerated conditions. The Flink pipeline behaves identically in both modes — this is the value of event-time processing with watermarks over processing-time.
 
 ---
@@ -607,82 +587,16 @@ docker-compose stop producer
 docker-compose start producer
 ```
 
----
-
-## Running the Offline Analysis Notebooks
-
-The notebooks read data from MinIO and Redis. Run them **after the pipeline has been active for at least 10–15 minutes** to ensure enough data has accumulated.
-
-### Install notebook dependencies
-
-```bash
-pip install jupyter pandas numpy scikit-learn folium matplotlib seaborn boto3 redis
-```
-
-Or using a virtual environment (recommended):
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install jupyter pandas numpy scikit-learn folium matplotlib seaborn boto3 redis
-```
-
-### Start Jupyter
-
-```bash
-cd /path/to/big-data
-jupyter notebook notebooks/
-```
-
-This opens the Jupyter interface in your browser. Run notebooks in order.
-
-### Notebook guide
-
-#### `01_stop_detection.ipynb` — Bus Stop Recovery
-- Loads raw GPS events from MinIO
-- Runs state-machine stop detection per vehicle
-- Applies DBSCAN to cluster recurring stop locations
-- **Expected output:** A Folium map saved to `/tmp/stop_detection_map.html` showing recovered bus stop locations (red circles) over raw stop points (blue dots)
-- **Requires:** ≥ 50 MinIO objects under `2025-*/` prefix (check MinIO console first)
-
-#### `02_travel_time.ipynb` — Route Travel Time Heatmap
-- Loads `TripSegment` records from `trips/` in MinIO
-- **Expected output:** A seaborn heatmap (route × hour) and a bar chart showing April 30 parade impact factor per route
-- **Requires:** ≥ 200 trip segment objects in MinIO (visible under `trips/` in MinIO console)
-
-#### `03_congestion_heatmap.ipynb` — Congestion by Hour
-- Loads raw GPS events from MinIO historical archive
-- Bins to 0.005° grid, aggregates speed per cell per hour
-- **Expected output:** Two Folium maps (`/tmp/congestion_hour08.html`, `congestion_hour14.html`) showing congestion heatmap at hour 8 and hour 14
-- **Requires:** ≥ 100 MinIO objects under `2025-*/`
-
-#### `04_pca_analysis.ipynb` — Dimensionality Reduction
-- Loads `VehicleFeatureVector` objects from `features/vehicle-hourly/` in MinIO
-- Fits StandardScaler + PCA(12 components)
-- **Expected output:** Scree plot, 2D scatter by route, loadings heatmap
-- **Requires:** ≥ 500 feature vector objects (one per vehicle per hour — accumulates after ~1 hour of pipeline runtime at `REPLAY_SPEED=0`)
-- **Note:** If not enough vectors yet, lower `max_objects` to what's available and re-run
-
-#### `05_anomaly_analysis.ipynb` — Anomaly Patterns
-- Reads `anomalies:recent` list directly from Redis (no MinIO needed)
-- **Expected output:** Bar charts for anomaly type distribution, per-route anomaly counts, speed histogram
-- **Requires:** Redis must be running with at least some anomaly events (`LRANGE anomalies:recent 0 -1` should return non-empty)
 
 ---
 
-## Troubleshooting
+## Offline Analysis Notebooks
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `flink-job-submitter` keeps restarting | JobManager not ready | Wait 60s; check `docker-compose logs flink-jobmanager` |
-| No bus markers on dashboard | Producer not started or pipeline not RUNNING | Check `docker-compose logs producer`; verify Flink job is RUNNING at `localhost:8081` |
-| MinIO console shows empty bucket | Pipeline not yet written first window | Wait 90s after producer starts; check Flink logs for MinIO errors |
-| Notebook cell fails with `NoSuchBucket` | Bucket not created yet | Run `docker-compose up minio-init` manually |
-| Flink job shows FAILED state | Usually a class-not-found in JAR | Rebuild JAR: `mvn clean package -q`, then `docker-compose restart flink-job-submitter` |
-| `redis-cli` command not found | Not in the container | Use `docker exec -it big-data-redis-1 redis-cli` |
-| Dashboard shows "Disconnected" badge | API container not running | `docker-compose logs api`; check for port 8000 conflict |
+Run after the pipeline has been active for at least 10–15 minutes.  
+See **[offline-notebooks.md](offline-notebooks.md)** for setup instructions and a per-notebook guide.
 
 ---
+
 
 ## Key Numbers
 

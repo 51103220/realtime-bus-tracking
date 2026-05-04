@@ -36,7 +36,7 @@ app = FastAPI(title="Bus Tracking API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://dashboard"],
+    allow_origins=["http://localhost:3002", "http://dashboard"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
