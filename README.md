@@ -12,7 +12,7 @@ cd big-data
 ./run.sh          # checks prerequisites, builds JAR, starts all 17 services, waits until ready
 ```
 
-That's it. `run.sh` handles everything. See `./run.sh --help` for additional modes:
+See `./run.sh --help` for additional modes:
 
 ```
 ./run.sh            — full setup: check prereqs, build JAR, start everything
