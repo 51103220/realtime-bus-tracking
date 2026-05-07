@@ -6,8 +6,9 @@ from typing import Any
 
 import boto3
 from botocore.client import Config
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 import redis.asyncio as aioredis
 
 # ── Config ─────────────────────────────────────────────────────────────────
@@ -21,6 +22,11 @@ MINIO_BUCKET  = os.getenv("MINIO_BUCKET",      "bus-history")
 # ── Global state ───────────────────────────────────────────────────────────
 redis_pool: aioredis.Redis | None = None
 ws_clients: set[WebSocket] = set()
+
+fleet_active_buses = Gauge("bus_fleet_active_buses", "Number of active buses in Redis")
+fleet_active_routes = Gauge("bus_fleet_active_routes", "Number of active routes represented by active buses")
+route_avg_speed = Gauge("bus_route_avg_speed_kmh", "Rolling average speed by route", ["route_no"])
+route_vehicle_count = Gauge("bus_route_vehicle_count", "Rolling vehicle count by route speed window", ["route_no"])
 
 
 @asynccontextmanager
@@ -45,6 +51,7 @@ app.add_middleware(
 # ── Background task: Redis Pub/Sub → WebSocket broadcast ──────────────────
 async def pubsub_relay():
     """Subscribe to Redis bus-updates channel and fan-out to all WS clients."""
+    global ws_clients
     pubsub = redis_pool.pubsub()
     await pubsub.subscribe("bus-updates")
     async for message in pubsub.listen():
@@ -120,6 +127,37 @@ async def get_stats() -> dict[str, Any]:
         "total_commands_processed": info.get("total_commands_processed", 0),
         "instantaneous_ops_per_sec": info.get("instantaneous_ops_per_sec", 0),
     }
+
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    """Expose business metrics for Prometheus/Grafana."""
+    active = await redis_pool.zcard("active-buses")
+    fleet_active_buses.set(active)
+
+    routes = set()
+    vehicles = await redis_pool.zrange("active-buses", 0, -1)
+    for vehicle in vehicles:
+        data = await redis_pool.hgetall(f"bus:{vehicle}")
+        route = data.get("route_no")
+        if route:
+            routes.add(route)
+    fleet_active_routes.set(len(routes))
+
+    cursor = 0
+    while True:
+        cursor, keys = await redis_pool.scan(cursor, match="route:speed:*", count=200)
+        for key in keys:
+            data = await redis_pool.hgetall(key)
+            route = key.removeprefix("route:speed:")
+            if data.get("avgSpeed") is not None:
+                route_avg_speed.labels(route).set(float(data["avgSpeed"]))
+            if data.get("vehicleCount") is not None:
+                route_vehicle_count.labels(route).set(float(data["vehicleCount"]))
+        if cursor == 0:
+            break
+
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 # ── WebSocket endpoint ─────────────────────────────────────────────────────

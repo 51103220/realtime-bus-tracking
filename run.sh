@@ -232,7 +232,7 @@ wait_for_url "Grafana"        "http://localhost:3001"  60
 # Wait for Flink job to reach RUNNING state
 printf "    Waiting for %-28s" "Flink job RUNNING..."
 elapsed=0
-until curl -sf "http://localhost:8081/jobs/overview" 2>/dev/null | grep -q '"status":"RUNNING"'; do
+until curl -sf "http://localhost:8081/jobs/overview" 2>/dev/null | grep -q '"state":"RUNNING"'; do
     sleep 3; elapsed=$((elapsed + 3))
     if [[ $elapsed -ge 180 ]]; then
         echo -e " ${YELLOW}not yet (check http://localhost:8081)${RESET}"
@@ -240,7 +240,7 @@ until curl -sf "http://localhost:8081/jobs/overview" 2>/dev/null | grep -q '"sta
     fi
     printf "."
 done
-if curl -sf "http://localhost:8081/jobs/overview" 2>/dev/null | grep -q '"status":"RUNNING"'; then
+if curl -sf "http://localhost:8081/jobs/overview" 2>/dev/null | grep -q '"state":"RUNNING"'; then
     echo -e " ${GREEN}RUNNING${RESET}"
 fi
 
@@ -258,7 +258,9 @@ echo -e "  ${CYAN}REST API${RESET}                   http://localhost:8000/buses
 echo -e "  ${CYAN}Grafana${RESET}                    http://localhost:3001  (admin / admin)"
 echo -e "  ${CYAN}Prometheus${RESET}                 http://localhost:9090"
 echo ""
-echo -e "  ${BOLD}Replay speed:${RESET} REPLAY_SPEED=$(grep '^REPLAY_SPEED=' .env | cut -d'=' -f2)  (edit .env → restart producer: $DC restart producer)"
+REPLAY_SPEED_VALUE=$(grep '^REPLAY_SPEED=' .env 2>/dev/null | cut -d'=' -f2)
+REPLAY_SPEED_VALUE=${REPLAY_SPEED_VALUE:-0}
+echo -e "  ${BOLD}Replay speed:${RESET} REPLAY_SPEED=$REPLAY_SPEED_VALUE  (edit .env → restart producer: $DC restart producer)"
 echo ""
 echo -e "  ${BOLD}Useful commands:${RESET}"
 echo -e "    $DC logs -f producer flink-taskmanager     # live logs"

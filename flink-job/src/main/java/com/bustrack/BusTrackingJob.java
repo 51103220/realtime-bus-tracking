@@ -61,6 +61,9 @@ public class BusTrackingJob {
                 .setGroupId("bus-tracking-flink")
                 .setStartingOffsets(OffsetsInitializer.earliest())
                 .setDeserializer(new BusEventDeserializer())
+                .setProperty("fetch.max.bytes", "1048576")
+                .setProperty("max.partition.fetch.bytes", "524288")
+                .setProperty("max.poll.records", "1000")
                 .build();
 
         WatermarkStrategy<BusEvent> watermarkStrategy = WatermarkStrategy

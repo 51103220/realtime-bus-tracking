@@ -28,6 +28,9 @@ dashboard/dist/
 # Environment — contains local paths and credentials
 .env
 
+# Local dataset
+dataset/
+
 # macOS
 .DS_Store
 **/.DS_Store

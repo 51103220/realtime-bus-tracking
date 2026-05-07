@@ -1,20 +1,20 @@
-version: "3.9"
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Shared Flink properties injected into both jobmanager and taskmanager
 # ─────────────────────────────────────────────────────────────────────────────
+x-flink-properties: &flink-properties |
+  jobmanager.rpc.address: flink-jobmanager
+  taskmanager.numberOfTaskSlots: 4
+  state.backend: hashmap
+  state.checkpoints.dir: file:///tmp/flink-checkpoints
+  execution.checkpointing.interval: 30000
+  metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+  metrics.reporter.prom.port: 9249
+
 x-flink-common: &flink-common
   image: apache/flink:1.19.1-scala_2.12-java17
   platform: linux/amd64
   environment:
-    FLINK_PROPERTIES: |
-      jobmanager.rpc.address: flink-jobmanager
-      taskmanager.numberOfTaskSlots: 4
-      state.backend: hashmap
-      state.checkpoints.dir: file:///tmp/flink-checkpoints
-      execution.checkpointing.interval: 30000
-      metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
-      metrics.reporter.prom.port: 9249
+    FLINK_PROPERTIES: *flink-properties
 
 services:
 
@@ -64,13 +64,7 @@ services:
       kafka:
         condition: service_healthy
     entrypoint: >
-      bash -c "
-        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists
-          --topic ${KAFKA_TOPIC:-bus-gps-events}
-          --partitions ${KAFKA_PARTITIONS:-3}
-          --replication-factor ${KAFKA_REPLICATION_FACTOR:-1} &&
-        echo 'Topic ${KAFKA_TOPIC:-bus-gps-events} ready.'
-      "
+      bash -c "kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ${KAFKA_TOPIC:-bus-gps-events} --partitions ${KAFKA_PARTITIONS:-3} --replication-factor ${KAFKA_REPLICATION_FACTOR:-1} && echo 'Topic ${KAFKA_TOPIC:-bus-gps-events} ready.'"
     restart: "no"
 
   # ── Kafka UI ────────────────────────────────────────────────────────────────
@@ -154,6 +148,7 @@ services:
     volumes:
       - ${DATASET_PATH}/vehicle_route_mapping.csv:/opt/flink/data/vehicle_route_mapping.csv:ro
     environment:
+      FLINK_PROPERTIES: *flink-properties
       # Runtime env vars read by BusTrackingJob via System.getenv()
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       KAFKA_TOPIC: ${KAFKA_TOPIC:-bus-gps-events}
