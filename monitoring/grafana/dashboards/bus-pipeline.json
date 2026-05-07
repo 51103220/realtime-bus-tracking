@@ -2,68 +2,95 @@
   "title": "Bus GPS Pipeline",
   "uid": "bus-pipeline",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 2,
   "refresh": "5s",
   "time": { "from": "now-15m", "to": "now" },
   "panels": [
     {
       "id": 1,
-      "title": "Flink Records In / sec",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 6 },
+      "title": "Fleet Operation - Active Buses",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "targets": [
         {
           "datasource": "Prometheus",
-          "expr": "rate(flink_taskmanager_job_task_operator_numRecordsInPerSecond[1m])",
-          "legendFormat": "records/s in"
+          "expr": "bus_fleet_active_buses",
+          "legendFormat": "active buses"
         }
-      ]
+      ],
+      "options": { "colorMode": "value", "graphMode": "area" }
     },
     {
       "id": 2,
-      "title": "Flink Records Out / sec",
-      "type": "timeseries",
-      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 6 },
+      "title": "Fleet Operation - Active Routes",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "targets": [
         {
           "datasource": "Prometheus",
-          "expr": "rate(flink_taskmanager_job_task_operator_numRecordsOutPerSecond[1m])",
-          "legendFormat": "records/s out"
+          "expr": "bus_fleet_active_routes",
+          "legendFormat": "active routes"
         }
-      ]
+      ],
+      "options": { "colorMode": "value", "graphMode": "area" }
     },
     {
       "id": 3,
-      "title": "Kafka Consumer Lag",
-      "type": "timeseries",
-      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 6 },
+      "title": "Traffic & Congestion - Slowest Routes",
+      "type": "barchart",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
       "targets": [
         {
           "datasource": "Prometheus",
-          "expr": "sum(kafka_consumergroup_lag) by (consumergroup)",
-          "legendFormat": "{{consumergroup}}"
+          "expr": "bottomk(10, bus_route_avg_speed_kmh > 0)",
+          "legendFormat": "Route {{route_no}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kmh",
+          "custom": {
+            "drawStyle": "bars"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Traffic & Congestion - Route Speeds",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 4 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "bottomk(8, bus_route_avg_speed_kmh > 0)",
+          "legendFormat": "Route {{route_no}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "kmh" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Fleet Operation - Busiest Routes",
+      "type": "barchart",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "topk(10, bus_route_vehicle_count)",
+          "legendFormat": "Route {{route_no}}"
         }
       ]
     },
     {
-      "id": 4,
-      "title": "Active Buses (Redis ZCARD)",
-      "type": "stat",
-      "gridPos": { "x": 0, "y": 6, "w": 4, "h": 4 },
-      "targets": [
-        {
-          "datasource": "Prometheus",
-          "expr": "redis_db_keys{db=\"db0\"}",
-          "legendFormat": "keys"
-        }
-      ],
-      "options": { "colorMode": "value", "graphMode": "none" }
-    },
-    {
-      "id": 5,
+      "id": 6,
       "title": "Redis Commands / sec",
       "type": "timeseries",
-      "gridPos": { "x": 4, "y": 6, "w": 8, "h": 4 },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 6 },
       "targets": [
         {
           "datasource": "Prometheus",
@@ -73,23 +100,66 @@
       ]
     },
     {
-      "id": 6,
-      "title": "Flink Checkpoint Duration (ms)",
+      "id": 7,
+      "title": "Flink Records In / sec",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 6, "w": 8, "h": 4 },
+      "gridPos": { "x": 0, "y": 14, "w": 8, "h": 6 },
       "targets": [
         {
           "datasource": "Prometheus",
-          "expr": "flink_jobmanager_job_lastCheckpointDuration",
-          "legendFormat": "last checkpoint ms"
+          "expr": "flink_taskmanager_job_task_operator_numRecordsInPerSecond",
+          "legendFormat": "records/s in"
         }
       ]
     },
     {
-      "id": 7,
+      "id": 8,
+      "title": "Flink Records Out / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 14, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "flink_taskmanager_job_task_operator_numRecordsOutPerSecond",
+          "legendFormat": "records/s out"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Kafka Consumer Lag",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 14, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(kafka_consumergroup_lag) by (consumergroup)",
+          "legendFormat": "{{consumergroup}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Flink Checkpoint Duration",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "flink_jobmanager_job_lastCheckpointDuration",
+          "legendFormat": "last checkpoint"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
       "title": "Kafka Messages In / sec",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 10, "w": 12, "h": 6 },
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 6 },
       "targets": [
         {
           "datasource": "Prometheus",
@@ -99,17 +169,21 @@
       ]
     },
     {
-      "id": 8,
-      "title": "Redis Memory Used (MB)",
+      "id": 12,
+      "title": "Redis Memory Used",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 10, "w": 12, "h": 6 },
+      "gridPos": { "x": 0, "y": 26, "w": 12, "h": 6 },
       "targets": [
         {
           "datasource": "Prometheus",
           "expr": "redis_memory_used_bytes / 1024 / 1024",
           "legendFormat": "used MB"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "MB" },
+        "overrides": []
+      }
     }
   ]
 }
