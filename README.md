@@ -1,7 +1,7 @@
 # Ho Chi Minh City Real-Time Bus Tracking
 
-**Dataset:** 32 GB · 517 JSON files · ~109 M GPS records · 440 buses · 31 routes · 50 days (Mar 20 – May 10 2025)  
-** Technology Stack:** Kafka → Flink (Java 17) → Redis + MinIO → FastAPI + React/Leaflet → Prometheus + Grafana  
+**Dataset:** 32 GB - 517 JSON files - ~109 Million GPS records - 440 buses - 31 routes - duration 50 days (Mar 20 – May 10 2025)  
+**Technology Stack:** Kafka → Flink (Java 17) → Redis + MinIO → FastAPI + React UI → Prometheus + Grafana  
 **Deployment:** Single `docker-compose up --build` — 17 Docker services
 
 ---
