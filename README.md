@@ -18,7 +18,7 @@ DATASET_PATH=/path/to/BigData-Bus-DataSet
 Then run:
 
 ```bash
-./run.sh            # check prereqs, build JAR, start all 17 services
+./run.sh            # start all 17 services
 ./run.sh --stop     # stop containers (keep volumes)
 ./run.sh --clean    # stop containers + delete volumes
 ./run.sh --rebuild  # rebuild JAR + images, then restart
@@ -52,31 +52,31 @@ Then run:
 
 ```
 Bus GPS Files (32 GB)
-       │  producer.py — configurable REPLAY_SPEED
+       │  producer.py — producing the bus events
        ▼
-  Apache Kafka  (topic: bus-gps-events, 3 partitions)
+  Apache Kafka  (topic: bus-gps-events)
        │
        ▼
   Apache Flink  (5-stage streaming pipeline)
   ┌──────────────────────────────────────────────┐
-  │ 1. CoordinateValidatorProcess  (data quality) │
-  │ 2. BloomFilterDeduplicator     (dedup)        │
-  │ 3. AnomalyDetector             (speed / jump) │
+  │ 1. CoordinateValidatorProcess  (data quality)            │
+  │ 2. BloomFilterDeduplicator     (deduplication)           │
+  │ 3. AnomalyDetector             (speed / jump  calculate) │
   │ 4a. RedisSink                  (current state)│
-  │ 4b. SlidingEventTimeWindows    (route speed)  │
-  │ 4c. EventTimeSessionWindows    (trip segments)│
-  │ 4d. TumblingEventTimeWindows   (raw archive)  │
-  │ 4e. TumblingEventTimeWindows 1h (features)    │
+  │ 4b. SlidingEventTimeWindows    (route speed calculate)   │
+  │ 4c. EventTimeSessionWindows    (trip segments)           │
+  │ 4d. TumblingEventTimeWindows   (raw archive)             │
+  │ 4e. TumblingEventTimeWindows 1h (features)               │
   └──────────────────────────────────────────────┘
        │                    │
        ▼                    ▼
-    Redis               MinIO (local S3)
+    Redis               MinIO (or S3 in clloud)
   current state       historical archive
   Pub/Sub relay       trip segments
   anomaly list        feature vectors
 
-  FastAPI (REST + WebSocket)  →  React + Leaflet dashboard
-  Prometheus + Grafana — 8-panel monitoring
+  FastAPI (REST + WebSocket)  →  React + dashboard
+  Prometheus + Grafana monitoring
 ```
 
 ---
