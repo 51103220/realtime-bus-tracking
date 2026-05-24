@@ -99,9 +99,7 @@ Within 5–10 seconds buses appear as coloured dots on the HCMC map.
 
 - Job graph shows the full operator DAG
 - Click any operator → records in/out per second
-- **Checkpoints** tab → duration, size, alignment lag
-- Watermark metric on Kafka source shows event-time progress
-
+- **Checkpoints** tab → duration, size, lag
 ---
 
 ### 3. Kafka UI — `http://localhost:8888`
@@ -109,8 +107,7 @@ Within 5–10 seconds buses appear as coloured dots on the HCMC map.
 **Topics** → `bus-gps-events` → **Messages**
 
 - Messages partitioned across 3 partitions by vehicle hash
-- **Consumer Groups** → `bus-tracking-flink` — lag should stay near zero
-
+- **Consumer Groups** → `bus-tracking-flink`
 ---
 
 ### 4. MinIO Console — `http://localhost:9001`
@@ -121,7 +118,7 @@ Credentials: `minioadmin` / `minioadmin`
 
 - `{date}/{HH-mm}/` — JSON arrays of raw GPS events
 - `trips/` — one `TripSegment` JSON per completed bus trip
-- `features/vehicle-hourly/` — 12-dim `VehicleFeatureVector` per vehicle per hour (PCA input)
+- `features/vehicle-hourly/` — 12-dimension `VehicleFeatureVector` per vehicle per hour
 
 ---
 
@@ -135,30 +132,16 @@ Credentials: `admin` / `admin`
 |-------|--------------|
 | Flink Records In/sec | Kafka source throughput |
 | Flink Records Out/sec | Post-dedup throughput (~0.6% lower) |
-| Kafka Consumer Lag | Should stay near 0 |
-| Active Buses | Redis key count; reaches ~440 within first minute |
+| Kafka Consumer Lag | expect 0 |
+| Active Buses | Redis key count; reaches ~440 |
 | Redis Commands/sec | HSET + EXPIRE + PUBLISH volume |
-| Flink Checkpoint Duration | Should be under 1000 ms |
+| Flink Checkpoint Duration | expect < 1000 ms |
 | Kafka Messages In/sec | Per-partition throughput |
-| Redis Memory Used (MB) | Grows then plateaus as TTLs expire |
+| Redis Memory Used (MB) |
 
 ---
 
-### 6. Redis CLI — Live State
-
-```bash
-docker exec -it big-data-redis-1 redis-cli
-
-ZCARD active-buses                  # how many buses tracked
-SCAN 0 MATCH "bus:*" COUNT 20       # list bus keys
-HGETALL bus:<hash>                  # current state for one bus
-LRANGE anomalies:recent 0 4         # last 5 anomalies
-HGETALL route:speed:<routeNo>       # rolling speed for a route (e.g. 163V)
-```
-
----
-
-### 7. Replay Speed
+### 6. Replay Speed
 
 ```bash
 docker-compose stop producer
@@ -180,7 +163,7 @@ docker-compose start producer
 ## Offline Notebooks
 
 Run after the pipeline has been active for 10–15 minutes.  
-See **[offline-notebooks.md](offline-notebooks.md)** for setup and per-notebook guide.
+See **[offline-notebooks.md](offline-notebooks.md)** for guideline.
 
 | Notebook | What it does |
 |----------|-------------|
