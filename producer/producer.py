@@ -1,12 +1,3 @@
-"""
-Kafka GPS producer — replays HCMC bus dataset files to a Kafka topic.
-
-Replay speed is controlled by REPLAY_SPEED env var:
-  0    → max throughput (flood Kafka, best for demos)
-  1.0  → real-time (respects original event timestamps)
-  N    → Nx accelerated (e.g. 10 means 10x faster than real-time)
-"""
-
 import json
 import os
 import re
@@ -15,13 +6,12 @@ import glob
 import sys
 from confluent_kafka import Producer, KafkaException
 
-# ── Config ─────────────────────────────────────────────────────────────────
 BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
 TOPIC             = os.getenv("KAFKA_TOPIC", "bus-gps-events")
 DATA_PATH         = os.getenv("DATA_PATH", "/data")
 REPLAY_SPEED      = float(os.getenv("REPLAY_SPEED", "0"))
 
-# ── Kafka producer config ──────────────────────────────────────────────────
+# config Kafka producer
 producer_conf = {
     "bootstrap.servers": BOOTSTRAP_SERVERS,
     "linger.ms": 5,
@@ -38,7 +28,7 @@ def delivery_report(err, msg):
 
 
 def find_files(data_path: str) -> list[str]:
-    """Collect all sub_raw_*.json files, sorted by numeric suffix."""
+    # tìm tất cả file sub_raw_*.json, sort theo số thứ tự
     patterns = [
         os.path.join(data_path, "part1", "part1", "sub_raw_*.json"),
         os.path.join(data_path, "part2", "part2", "sub_raw_*.json"),
@@ -49,7 +39,7 @@ def find_files(data_path: str) -> list[str]:
 
     def sort_key(path):
         m = re.search(r"sub_raw_(\d+)\.json$", path)
-        # prefix part index so part1 files sort before part2
+        # part1 trước part2
         part = 1 if "part1" in path else 2
         return (part, int(m.group(1)) if m else 0)
 
@@ -57,7 +47,7 @@ def find_files(data_path: str) -> list[str]:
 
 
 def records_from_file(path: str) -> list[dict]:
-    """Load JSON array, discard records missing vehicle or datetime."""
+    # load JSON, bỏ record thiếu vehicle hoặc datetime
     with open(path, "r") as f:
         data = json.load(f)
 
@@ -89,14 +79,14 @@ def run():
         if not records:
             continue
 
-        # sort records within each file by datetime for correct replay order
+        # sort theo datetime để replay đúng thứ tự
         records.sort(key=lambda r: r["datetime"])
 
         print(f"[producer] [{file_idx}/{len(files)}] {os.path.basename(file_path)} "
               f"— {len(records):,} records")
 
         for rec in records:
-            # ── Replay speed timing ────────────────────────────────────────
+            # điều tiết tốc độ replay
             if REPLAY_SPEED > 0 and prev_event_time is not None:
                 event_gap   = rec["datetime"] - prev_event_time
                 elapsed     = time.monotonic() - prev_wall_time

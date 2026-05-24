@@ -8,10 +8,7 @@ import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
-/**
- * ProcessFunction wrapper that provides side output for invalid events.
- * Valid events go to main output; invalid events go to INVALID_TAG side output.
- */
+// wrapper ProcessFunction để có side output cho event lỗi
 public class CoordinateValidatorProcess extends ProcessFunction<BusEvent, BusEvent> {
 
     public static final OutputTag<InvalidBusEvent> INVALID_TAG =

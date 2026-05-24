@@ -2,42 +2,39 @@ package com.bustrack.model;
 
 import java.io.Serializable;
 
-/**
- * 12-dimensional feature vector per vehicle per hour.
- * Written to MinIO features/vehicle-hourly/ as JSON input for offline PCA.
- */
+// 12 feature mỗi xe mỗi giờ — ghi vào MinIO cho PCA offline
 public class VehicleFeatureVector implements Serializable {
     public String vehicle;
     public String routeNo;
     public long   windowStartMs;
     public int    hourOfDay;        // 0-23
 
-    // Speed features
+    // feature tốc độ
     public double eventCount;
-    public double avgSpeed;         // mean of non-null speed values
+    public double avgSpeed;         // trung bình speed không null
     public double maxSpeed;
-    public double stdSpeed;         // standard deviation
-    public double idleFraction;     // fraction where speed < 2 km/h
+    public double stdSpeed;         // độ lệch chuẩn
+    public double idleFraction;     // tỉ lệ speed < 2 km/h
 
-    // Spatial features
-    public double totalDistanceKm;  // sum of haversine distances
+    // feature không gian
+    public double totalDistanceKm;  // tổng haversine
 
-    // Temporal regularity features
-    public double avgSamplingIntervalS;   // mean seconds between consecutive events
-    public double samplingIrregularity;   // std dev of sampling intervals
+    // feature độ đều sampling
+    public double avgSamplingIntervalS;   // giây trung bình giữa các ping
+    public double samplingIrregularity;   // std dev của khoảng cách sampling
 
-    // Cyclic hour encoding (avoids midnight discontinuity)
+    // mã hóa giờ dạng cyclic (tránh bất liên tục ở nửa đêm)
     public double hourSin;          // sin(2π * hourOfDay / 24)
     public double hourCos;          // cos(2π * hourOfDay / 24)
 
-    // Operational features
-    public double headingChanges;   // count of |heading_delta| > 45 degrees
+    // feature vận hành
+    public double headingChanges;   // số lần |delta heading| > 45 độ
     public double ignitionOnFraction;
     public double airconOnFraction;
 
     public VehicleFeatureVector() {}
 
-    /** Returns the 12 core features as a double array for sklearn PCA input. */
+    // 12 feature cốt lõi dưới dạng mảng — dùng cho sklearn PCA
     public double[] toArray() {
         return new double[]{
             eventCount, avgSpeed, maxSpeed, stdSpeed, idleFraction,

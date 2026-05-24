@@ -8,19 +8,13 @@ import org.apache.flink.metrics.Counter;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
-/**
- * Validates GPS coordinates and speed plausibility.
- * Valid events flow downstream; invalid events are routed to INVALID_TAG side output.
- *
- * HCMC bounding box: lon [106.4, 107.1], lat [10.3, 11.2]
- * Hardware fault threshold: speed > 120 km/h (caught here, not by AnomalyDetector)
- */
+// kiểm tra tọa độ và tốc độ — dùng CoordinateValidatorProcess để có side output
 public class CoordinateValidator extends RichFlatMapFunction<BusEvent, BusEvent> {
 
     public static final OutputTag<InvalidBusEvent> INVALID_TAG =
             new OutputTag<InvalidBusEvent>("invalid-events") {};
 
-    // HCMC bounding box
+    // bounding box TPHCM
     private static final double LON_MIN = 106.4;
     private static final double LON_MAX = 107.1;
     private static final double LAT_MIN = 10.3;
@@ -29,15 +23,6 @@ public class CoordinateValidator extends RichFlatMapFunction<BusEvent, BusEvent>
 
     private transient Counter validCounter;
     private transient Counter invalidCounter;
-
-    // Side output context is available via processElement in ProcessFunction,
-    // but FlatMapFunction uses a collector-only pattern. We use a workaround:
-    // store invalid events in a thread-local and emit from a wrapping ProcessFunction.
-    // For simplicity in this demo we use a ProcessFunction directly.
-
-    // NOTE: This class uses RichFlatMapFunction for valid-only output.
-    // Invalid events are handled by wrapping this logic in CoordinateValidatorProcess.
-    // Keep this class for the metrics; use CoordinateValidatorProcess for side output.
 
     @Override
     public void open(Configuration cfg) {

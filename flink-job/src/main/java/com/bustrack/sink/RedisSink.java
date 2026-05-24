@@ -62,10 +62,10 @@ public class RedisSink extends RichSinkFunction<BusEvent> {
             jedis.hset(key, fields);
             jedis.expire(key, ttlSeconds);
 
-            // sorted set for quick active-bus enumeration
+            // để tra nhanh danh sách xe đang chạy
             jedis.zadd("active-buses", event.datetime, event.vehicle);
 
-            // pub/sub so FastAPI WebSocket can push updates without polling
+            // pub/sub để FastAPI push websocket không cần polling
             String json = MAPPER.writeValueAsString(fields);
             jedis.publish("bus-updates", json);
         } catch (Exception e) {

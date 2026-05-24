@@ -22,21 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Probabilistic deduplication using a Bloom Filter (Guava implementation).
- *
- * Theory: A Bloom filter is a space-efficient probabilistic data structure.
- * It can definitively say "NOT seen" (no false negatives), but may say
- * "probably seen" for items it has never seen (false positives).
- *
- * Trade-off vs. current HashMap state:
- *   - Bloom filter at 1% FPP for 100K items = ~958KB per task slot
- *   - HashMap of 100K (String, Long) pairs ≈ 5-8MB per task slot
- *   - Bloom filter is ~8x more space-efficient, at the cost of ~1% false positive rate
- *
- * The filter is serialized into Flink managed state (ValueState<byte[]>) so it
- * survives checkpoints and task manager failures.
- */
+// dedup dùng bloom filter, tiết kiệm bộ nhớ hơn HashMap nhiều
 public class BloomFilterDeduplicator extends KeyedProcessFunction<String, BusEvent, BusEvent> {
 
     private static final Logger LOG = LoggerFactory.getLogger(BloomFilterDeduplicator.class);
@@ -44,14 +30,14 @@ public class BloomFilterDeduplicator extends KeyedProcessFunction<String, BusEve
     public static final OutputTag<DedupMetrics> METRICS_TAG =
             new OutputTag<DedupMetrics>("dedup-metrics") {};
 
-    // Bloom filter config: 1% false positive rate, expected 10K inserts per vehicle over TTL
+    // FPP 1%, mỗi xe khoảng 10K event trong TTL là đủ
     private static final double FALSE_POSITIVE_RATE = 0.01;
     private static final int    EXPECTED_INSERTIONS  = 10_000;
 
     private final String routeMappingPath;
     private final int    dedupTtlSeconds;
 
-    private transient ValueState<byte[]>  bloomState;       // serialized BloomFilter
+    private transient ValueState<byte[]>  bloomState;       // bloom filter serialized
     private transient ValueState<Long>    totalSeenState;
     private transient ValueState<Long>    droppedState;
     private transient Map<String, RouteInfo> routeMap;
@@ -63,7 +49,7 @@ public class BloomFilterDeduplicator extends KeyedProcessFunction<String, BusEve
 
     @Override
     public void open(Configuration cfg) throws Exception {
-        // Bloom filter state has longer TTL — reset hourly for memory management
+        // TTL dài hơn để quản lý bộ nhớ, reset theo giờ
         StateTtlConfig ttl = StateTtlConfig
                 .newBuilder(Time.seconds(Math.max(dedupTtlSeconds * 10L, 3600L)))
                 .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
@@ -96,12 +82,12 @@ public class BloomFilterDeduplicator extends KeyedProcessFunction<String, BusEve
         seen++;
 
         if (bf.mightContain(key)) {
-            // Probable duplicate — drop
+            // có thể trùng — bỏ qua
             dropped++;
             droppedState.update(dropped);
             totalSeenState.update(seen);
 
-            // Emit metrics every 5000 events for monitoring
+            // gửi metrics mỗi 5000 event để theo dõi
             if (seen % 5000 == 0) emitMetrics(ctx, bf, seen, dropped);
             return;
         }
@@ -111,7 +97,7 @@ public class BloomFilterDeduplicator extends KeyedProcessFunction<String, BusEve
         totalSeenState.update(seen);
         droppedState.update(dropped);
 
-        // Route enrichment
+        // gắn tuyến vào event
         RouteInfo route = routeMap.get(event.vehicle);
         if (route != null) {
             event.routeId = route.routeId;
@@ -152,7 +138,7 @@ public class BloomFilterDeduplicator extends KeyedProcessFunction<String, BusEve
         m.totalSeen            = seen;
         m.duplicatesDropped    = dropped;
         m.duplicateRate        = seen > 0 ? (double) dropped / seen : 0.0;
-        // Guava does not expose size-in-bytes directly; approximate from serialized form
+        // Guava không có hàm lấy size trực tiếp, xấp xỉ qua serialized bytes
         m.bloomFilterSizeBytes = serialize(bf).length;
         m.numHashFunctions     = (int) Math.ceil(-Math.log(FALSE_POSITIVE_RATE) / Math.log(2));
         ctx.output(METRICS_TAG, m);
@@ -169,7 +155,7 @@ public class BloomFilterDeduplicator extends KeyedProcessFunction<String, BusEve
     private Map<String, RouteInfo> loadRouteMap(String path) {
         Map<String, RouteInfo> map = new HashMap<>();
         try (BufferedReader br = new BufferedReader(new FileReader(path))) {
-            br.readLine(); // skip header
+            br.readLine(); // bỏ qua dòng tiêu đề
             String line;
             while ((line = br.readLine()) != null) {
                 String[] parts = line.split(",", -1);

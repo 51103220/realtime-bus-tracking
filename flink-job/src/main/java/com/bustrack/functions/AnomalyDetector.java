@@ -15,22 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Detects two types of GPS anomalies per vehicle (keyed state):
- *
- * 1. SPEED_EXCESS  — speed > 80 km/h in urban HCMC context.
- *    Threshold is softer than the hardware-fault 120 km/h caught in CoordinateValidator.
- *    Justification: HCMC city speed limit is 60 km/h; 80 km/h catches genuine outliers
- *    while allowing GPS smoothing error margin.
- *
- * 2. GPS_JUMP — position moves >500 m in <30 seconds.
- *    Implies implied speed >60 km/h sustained in a straight line — impossible for a
- *    bus navigating urban intersections. Catches GPS unit resets and coordinate
- *    teleportation artefacts that pass bounding-box validation.
- *
- * Anomalies are emitted on ANOMALY_TAG side output and also forwarded downstream
- * (events are not dropped — they remain in the clean stream for completeness).
- */
+// phát hiện bất thường GPS theo từng xe
 public class AnomalyDetector extends KeyedProcessFunction<String, BusEvent, BusEvent> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AnomalyDetector.class);
@@ -38,7 +23,7 @@ public class AnomalyDetector extends KeyedProcessFunction<String, BusEvent, BusE
     public static final OutputTag<AnomalyEvent> ANOMALY_TAG =
             new OutputTag<AnomalyEvent>("anomaly-events") {};
 
-    // Thresholds
+    // ngưỡng phát hiện
     private static final double SPEED_EXCESS_KMH    = 80.0;
     private static final double GPS_JUMP_DIST_KM    = 0.5;
     private static final long   GPS_JUMP_MAX_SECS   = 30L;
@@ -63,12 +48,12 @@ public class AnomalyDetector extends KeyedProcessFunction<String, BusEvent, BusE
 
         List<String> reasons = new ArrayList<>();
 
-        // Anomaly 1: Speed excess
+        // tốc độ quá cao
         if (curr.speed != null && curr.speed > SPEED_EXCESS_KMH) {
             reasons.add("SPEED_EXCESS:" + String.format("%.1f", curr.speed));
         }
 
-        // Anomaly 2: GPS jump (teleportation)
+        // xe nhảy vọt vị trí
         if (prev.x != null && prev.y != null && curr.x != null && curr.y != null) {
             double distKm = haversineKm(prev.y, prev.x, curr.y, curr.x);
             long   dtSecs = curr.datetime - prev.datetime;

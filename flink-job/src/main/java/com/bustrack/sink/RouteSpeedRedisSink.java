@@ -13,11 +13,7 @@ import redis.clients.jedis.JedisPoolConfig;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Writes sliding-window route speed aggregates to Redis.
- * Key: route:speed:{routeNo} — HSET with avgSpeed, minSpeed, maxSpeed, vehicleCount, windowEndMs
- * TTL: 120s (two window periods)
- */
+// ghi tốc độ trung bình tuyến vào Redis, TTL 120s (2 chu kỳ window)
 public class RouteSpeedRedisSink extends RichSinkFunction<RouteSpeedSnapshot> {
 
     private static final Logger LOG = LoggerFactory.getLogger(RouteSpeedRedisSink.class);

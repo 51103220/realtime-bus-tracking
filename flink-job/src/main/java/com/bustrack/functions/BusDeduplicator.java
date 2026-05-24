@@ -25,9 +25,9 @@ public class BusDeduplicator extends KeyedProcessFunction<String, BusEvent, BusE
     private final String routeMappingPath;
     private final int dedupTtlSeconds;
 
-    // keyed state: last seen datetime for this vehicle
+    // lưu thời điểm cuối cùng thấy xe này
     private transient ValueState<Long> lastDatetime;
-    // static route map loaded once per task slot
+    // map tuyến, load một lần thôi
     private transient Map<String, RouteInfo> routeMap;
 
     public BusDeduplicator(String routeMappingPath, int dedupTtlSeconds) {
@@ -56,13 +56,13 @@ public class BusDeduplicator extends KeyedProcessFunction<String, BusEvent, BusE
         Long last = lastDatetime.value();
 
         if (last != null && last.equals(event.datetime)) {
-            // duplicate — drop silently
+            // trùng — bỏ luôn
             return;
         }
 
         lastDatetime.update(event.datetime);
 
-        // enrich with route info
+        // gắn tuyến
         RouteInfo route = routeMap.get(event.vehicle);
         if (route != null) {
             event.routeId = route.routeId;
@@ -78,7 +78,7 @@ public class BusDeduplicator extends KeyedProcessFunction<String, BusEvent, BusE
     private Map<String, RouteInfo> loadRouteMap(String path) {
         Map<String, RouteInfo> map = new HashMap<>();
         try (BufferedReader br = new BufferedReader(new FileReader(path))) {
-            String line = br.readLine(); // skip header: vehicle,route_id,route_no
+            String line = br.readLine(); // bỏ qua header: vehicle,route_id,route_no
             while ((line = br.readLine()) != null) {
                 String[] parts = line.split(",", -1);
                 if (parts.length >= 3) {

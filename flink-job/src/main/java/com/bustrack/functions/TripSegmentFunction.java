@@ -9,22 +9,10 @@ import org.apache.flink.util.Collector;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Session window function that converts a gap-separated burst of events
- * from one vehicle into a TripSegment summary.
- *
- * Theory: Session windows close when no event arrives for a configurable gap
- * (here 5 minutes). This models real-world bus trips: a bus is idle at a
- * terminal for 5+ minutes between runs. Session windows are the only Flink
- * window type driven by data inactivity, not wall-clock time.
- *
- * Contrast with tumbling windows (fixed-duration, non-overlapping) and
- * sliding windows (fixed-duration, overlapping): session windows are
- * data-driven, which makes them semantically correct for trip extraction.
- */
+// session window — mỗi lần xe nghỉ 5 phút là tách thành một chuyến mới
 public class TripSegmentFunction extends ProcessWindowFunction<BusEvent, TripSegment, String, TimeWindow> {
 
-    private static final double STOP_SPEED_KMH = 2.0; // below this = bus stopped at stop
+    private static final double STOP_SPEED_KMH = 2.0; // xe đứng yên
 
     @Override
     public void process(String vehicle, Context ctx, Iterable<BusEvent> events, Collector<TripSegment> out) {
@@ -50,7 +38,7 @@ public class TripSegmentFunction extends ProcessWindowFunction<BusEvent, TripSeg
         seg.endLon          = last.x  != null ? last.x  : 0;
         seg.endLat          = last.y  != null ? last.y  : 0;
 
-        // Compute total distance, avg speed, stop count
+        // tính khoảng cách, tốc độ trung bình, số lần dừng
         double totalDist  = 0;
         double speedSum   = 0;
         int    speedCount = 0;

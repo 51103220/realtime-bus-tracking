@@ -10,7 +10,6 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import redis.asyncio as aioredis
 
-# ── Config ─────────────────────────────────────────────────────────────────
 REDIS_HOST    = os.getenv("REDIS_HOST",    "redis")
 REDIS_PORT    = int(os.getenv("REDIS_PORT", "6379"))
 MINIO_ENDPOINT= os.getenv("MINIO_ENDPOINT",   "http://minio:9000")
@@ -18,7 +17,6 @@ MINIO_KEY     = os.getenv("MINIO_ACCESS_KEY",  "minioadmin")
 MINIO_SECRET  = os.getenv("MINIO_SECRET_KEY",  "minioadmin")
 MINIO_BUCKET  = os.getenv("MINIO_BUCKET",      "bus-history")
 
-# ── Global state ───────────────────────────────────────────────────────────
 redis_pool: aioredis.Redis | None = None
 ws_clients: set[WebSocket] = set()
 
@@ -42,9 +40,7 @@ app.add_middleware(
 )
 
 
-# ── Background task: Redis Pub/Sub → WebSocket broadcast ──────────────────
 async def pubsub_relay():
-    """Subscribe to Redis bus-updates channel and fan-out to all WS clients."""
     pubsub = redis_pool.pubsub()
     await pubsub.subscribe("bus-updates")
     async for message in pubsub.listen():
@@ -61,10 +57,8 @@ async def pubsub_relay():
         ws_clients -= dead
 
 
-# ── REST endpoints ─────────────────────────────────────────────────────────
 @app.get("/buses")
 async def get_all_buses() -> list[dict[str, Any]]:
-    """Return current state of all active buses."""
     result = []
     cursor = 0
     while True:
@@ -80,14 +74,12 @@ async def get_all_buses() -> list[dict[str, Any]]:
 
 @app.get("/bus/{vehicle_id}")
 async def get_bus(vehicle_id: str) -> dict[str, Any]:
-    """Return current state of a single bus."""
     data = await redis_pool.hgetall(f"bus:{vehicle_id}")
     return data or {}
 
 
 @app.get("/bus/{vehicle_id}/history")
 async def get_bus_history(vehicle_id: str, date: str | None = None) -> list[str]:
-    """Return list of MinIO object keys for this vehicle's route history."""
     s3 = _s3_client()
     prefix = date if date else ""
     try:
@@ -99,7 +91,7 @@ async def get_bus_history(vehicle_id: str, date: str | None = None) -> list[str]
 
 @app.get("/routes")
 async def get_routes() -> list[dict[str, str]]:
-    """Return distinct routes from the active-buses sorted set."""
+    # lấy danh sách tuyến từ sorted set active-buses
     vehicles = await redis_pool.zrange("active-buses", 0, -1)
     routes: dict[str, str] = {}
     for v in vehicles:
@@ -122,14 +114,13 @@ async def get_stats() -> dict[str, Any]:
     }
 
 
-# ── WebSocket endpoint ─────────────────────────────────────────────────────
 @app.websocket("/ws/buses")
 async def ws_buses(ws: WebSocket):
     await ws.accept()
     ws_clients.add(ws)
     try:
         while True:
-            # keep connection alive; all data comes from pubsub_relay
+            # giữ kết nối sống, data đến từ pubsub
             await asyncio.sleep(30)
             await ws.send_text('{"type":"ping"}')
     except WebSocketDisconnect:
@@ -138,7 +129,6 @@ async def ws_buses(ws: WebSocket):
         ws_clients.discard(ws)
 
 
-# ── S3/MinIO client ────────────────────────────────────────────────────────
 def _s3_client():
     return boto3.client(
         "s3",

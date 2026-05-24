@@ -4,20 +4,7 @@ import com.bustrack.model.BusEvent;
 import com.bustrack.model.RouteSpeedSnapshot;
 import org.apache.flink.api.common.functions.AggregateFunction;
 
-/**
- * Incremental aggregation for sliding-window route speed metrics.
- *
- * Theory: AggregateFunction is Flink's preferred aggregation primitive for
- * windowed streams. Unlike ProcessWindowFunction (which buffers all events),
- * AggregateFunction maintains a running accumulator — O(1) memory regardless
- * of window size. Combined with a 5-minute/30-second sliding window, this
- * produces a continuously updated speed signal for each route.
- *
- * Memory trade-off vs. tumbling windows:
- *   Overlap factor = window_size / slide_interval = 300s / 30s = 10
- *   Each event lives in ~10 overlapping windows simultaneously.
- *   This is the core cost of smoothness in sliding windows.
- */
+// tính tốc độ trung bình/min/max theo cửa sổ trượt — O(1) memory
 public class SpeedAggregator
         implements AggregateFunction<BusEvent, SpeedAggregator.Acc, RouteSpeedSnapshot> {
 
@@ -28,7 +15,7 @@ public class SpeedAggregator
         double speedMax   = Double.MIN_VALUE;
         int    speedCount = 0;
         int    eventCount = 0;
-        // use a simple vehicle-set approximation: count vehicles that reported
+        // đếm event, không phải unique vehicle
         int    vehicleCount = 0;
     }
 
@@ -41,7 +28,7 @@ public class SpeedAggregator
     public Acc add(BusEvent event, Acc acc) {
         acc.routeNo = event.routeNo;
         acc.eventCount++;
-        acc.vehicleCount++; // simplified: counts events, not unique vehicles
+        acc.vehicleCount++; // đơn giản hóa: đếm event chứ không unique vehicle
         if (event.speed != null) {
             acc.speedSum += event.speed;
             acc.speedCount++;

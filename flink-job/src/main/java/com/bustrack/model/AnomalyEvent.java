@@ -6,7 +6,7 @@ public class AnomalyEvent implements Serializable {
     public String vehicle;
     public String routeNo;
     public long   datetime;
-    public String anomalyType;     // e.g. "SPEED_EXCESS:95.0" or "GPS_JUMP:1.2km"
+    public String anomalyType;     // vd: "SPEED_EXCESS:95.0" hay "GPS_JUMP:1.2km"
     public Double speed;
     public Double lon;
     public Double lat;

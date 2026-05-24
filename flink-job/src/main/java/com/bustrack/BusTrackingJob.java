@@ -17,21 +17,6 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 
 import java.time.Duration;
 
-/**
- * HCMC Bus GPS Tracking Pipeline — full analysis layer.
- *
- * Pipeline stages:
- *   1. Kafka source (event-time watermarked)
- *   2. CoordinateValidatorProcess  — data quality gate, HCMC bounding box
- *   3. BloomFilterDeduplicator     — probabilistic dedup + route enrichment
- *   4. AnomalyDetector             — speed excess + GPS jump detection
- *   5a. RedisSink                  — current bus state (HSET + Pub/Sub)
- *   5b. SlidingEventTimeWindows    → RouteSpeedRedisSink (rolling speed)
- *   5c. EventTimeSessionWindows    → TripSegmentMinIOSink (trip extraction)
- *   5d. TumblingEventTimeWindows   → MinIOSink (raw historical archive)
- *   5e. TumblingEventTimeWindows 1h → FeatureVectorMinIOSink (PCA input)
- *   Side outputs: invalid events (logged), anomaly events → AnomalyRedisSink
- */
 public class BusTrackingJob {
 
     public static void main(String[] args) throws Exception {
@@ -39,7 +24,6 @@ public class BusTrackingJob {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.getCheckpointConfig().setCheckpointInterval(30_000);
 
-        // ── Config ─────────────────────────────────────────────────────────
         String kafkaBootstrap   = getEnv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092");
         String kafkaTopic       = getEnv("KAFKA_TOPIC",             "bus-gps-events");
         String routeMappingPath = getEnv("ROUTE_MAPPING_PATH",      "/opt/flink/data/vehicle_route_mapping.csv");
@@ -54,7 +38,7 @@ public class BusTrackingJob {
         String minioSecretKey   = getEnv("MINIO_SECRET_KEY", "minioadmin");
         String minioBucket      = getEnv("MINIO_BUCKET",     "bus-history");
 
-        // ── 1. Kafka source ────────────────────────────────────────────────
+        // 1. đọc từ Kafka
         KafkaSource<BusEvent> kafkaSource = KafkaSource.<BusEvent>builder()
                 .setBootstrapServers(kafkaBootstrap)
                 .setTopics(kafkaTopic)
@@ -70,32 +54,32 @@ public class BusTrackingJob {
         DataStream<BusEvent> rawStream = env
                 .fromSource(kafkaSource, watermarkStrategy, "Kafka GPS Source");
 
-        // ── 2. Coordinate validation (data quality gate) ───────────────────
+        // 2. lọc tọa độ hợp lệ
         SingleOutputStreamOperator<BusEvent> validatedStream = rawStream
                 .process(new CoordinateValidatorProcess())
                 .name("GPS Coordinate Validation");
 
-        // Side output: invalid events (logged to stdout for demo; extend to MinIO if needed)
+        // side output: event lỗi — in ra stdout cho demo
         DataStream<InvalidBusEvent> invalidStream = validatedStream
                 .getSideOutput(CoordinateValidatorProcess.INVALID_TAG);
         invalidStream
                 .map(e -> "INVALID[" + e.reason + "] vehicle=" + (e.event != null ? e.event.vehicle : "null"))
                 .print("invalid-events");
 
-        // ── 3. Bloom filter deduplication + route enrichment ───────────────
+        // 3. dedup bloom filter + gắn tuyến
         SingleOutputStreamOperator<BusEvent> dedupedStream = validatedStream
                 .keyBy(e -> e.vehicle)
                 .process(new BloomFilterDeduplicator(routeMappingPath, dedupTtl))
                 .name("Bloom Filter Dedup + Route Enrichment");
 
-        // Side output: dedup metrics (logged for demo)
+        // side output: metrics dedup — in cho dễ theo dõi
         dedupedStream
                 .getSideOutput(BloomFilterDeduplicator.METRICS_TAG)
                 .map(m -> String.format("DEDUP[%s] seen=%d dropped=%d rate=%.3f bloomBytes=%d",
                         m.vehicle, m.totalSeen, m.duplicatesDropped, m.duplicateRate, m.bloomFilterSizeBytes))
                 .print("dedup-metrics");
 
-        // ── 4. Anomaly detection ────────────────────────────────────────────
+        // 4. phát hiện bất thường
         SingleOutputStreamOperator<BusEvent> cleanStream = dedupedStream
                 .keyBy(e -> e.vehicle)
                 .process(new AnomalyDetector())
@@ -107,12 +91,12 @@ public class BusTrackingJob {
                 .addSink(new AnomalyRedisSink(redisHost, redisPort))
                 .name("Anomaly Redis Sink");
 
-        // ── 5a. Redis current state ─────────────────────────────────────────
+        // 5a. lưu trạng thái xe vào Redis
         cleanStream
                 .addSink(new RedisSink(redisHost, redisPort, redisTtl))
                 .name("Redis Current State");
 
-        // ── 5b. Sliding window — rolling route speed (5min / 30s) ──────────
+        // 5b. cửa sổ trượt — tốc độ tuyến mỗi 30s
         cleanStream
                 .keyBy(e -> e.routeNo != null ? e.routeNo : "UNKNOWN")
                 .window(SlidingEventTimeWindows.of(Time.minutes(5), Time.seconds(30)))
@@ -121,7 +105,7 @@ public class BusTrackingJob {
                 .addSink(new RouteSpeedRedisSink(redisHost, redisPort))
                 .name("Route Speed Redis Sink");
 
-        // ── 5c. Session windows — trip segmentation (gap = 5 min) ──────────
+        // 5c. session window — tách chuyến đi (gap 5 phút)
         cleanStream
                 .keyBy(e -> e.vehicle)
                 .window(EventTimeSessionWindows.withGap(Time.minutes(5)))
@@ -130,14 +114,14 @@ public class BusTrackingJob {
                 .addSink(new TripSegmentMinIOSink(minioEndpoint, minioAccessKey, minioSecretKey, minioBucket))
                 .name("Trip Segment MinIO Sink");
 
-        // ── 5d. Tumbling window — raw historical archive (per route) ───────
+        // 5d. tumbling window — lưu lịch sử theo tuyến
         cleanStream
                 .keyBy(e -> e.routeNo != null ? e.routeNo : "UNKNOWN")
                 .window(TumblingEventTimeWindows.of(Time.seconds(windowSize)))
                 .process(new MinIOSink(minioEndpoint, minioAccessKey, minioSecretKey, minioBucket))
                 .name("MinIO Historical Archive");
 
-        // ── 5e. Tumbling window 1h — feature vectors for PCA ───────────────
+        // 5e. tumbling 1h — trích feature vector cho PCA
         cleanStream
                 .keyBy(e -> e.vehicle)
                 .window(TumblingEventTimeWindows.of(Time.hours(1)))

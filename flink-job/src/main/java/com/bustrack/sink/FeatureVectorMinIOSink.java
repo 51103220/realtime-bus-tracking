@@ -13,10 +13,7 @@ import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Writes VehicleFeatureVector to MinIO under features/vehicle-hourly/{routeNo}/{vehicle}_{windowStart}.json
- * These files are read by the offline PCA Jupyter notebook.
- */
+// ghi feature vector vào MinIO — notebook PCA đọc từ đây
 public class FeatureVectorMinIOSink extends RichSinkFunction<VehicleFeatureVector> {
 
     private static final Logger LOG = LoggerFactory.getLogger(FeatureVectorMinIOSink.class);

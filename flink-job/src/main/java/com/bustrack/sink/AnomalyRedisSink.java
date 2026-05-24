@@ -36,7 +36,7 @@ public class AnomalyRedisSink extends RichSinkFunction<AnomalyEvent> {
         try (Jedis jedis = pool.getResource()) {
             String json = MAPPER.writeValueAsString(event);
             jedis.lpush(KEY, json);
-            jedis.ltrim(KEY, 0, MAX_LIST_SIZE - 1); // cap at 500
+            jedis.ltrim(KEY, 0, MAX_LIST_SIZE - 1); // giới hạn 500 cái thôi
             jedis.publish("bus-anomalies", json);
         } catch (Exception e) {
             LOG.warn("AnomalyRedisSink failed: {}", e.getMessage());

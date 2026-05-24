@@ -11,28 +11,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Extracts a 12-dimensional feature vector per vehicle per 1-hour event-time window.
- * Output is written to MinIO features/vehicle-hourly/ as input for offline PCA.
- *
- * Features:
- *   [0] eventCount           — data volume proxy
- *   [1] avgSpeed             — mean speed
- *   [2] maxSpeed             — peak speed
- *   [3] stdSpeed             — speed variability
- *   [4] idleFraction         — fraction where speed < 2 km/h (stop density)
- *   [5] totalDistanceKm      — total distance (haversine chain)
- *   [6] avgSamplingIntervalS — mean time between consecutive pings
- *   [7] samplingIrregularity — std dev of sampling intervals
- *   [8] hourSin              — sin(2π·h/24) — cyclic hour encoding
- *   [9] hourCos              — cos(2π·h/24) — avoids midnight discontinuity
- *  [10] headingChanges       — count of |heading_delta| > 45°
- *  [11] ignitionOnFraction   — operational intensity proxy
- *
- * Cyclic encoding note: raw hour-of-day as an integer treats 23 and 0 as maximally
- * different (|23-0|=23). Encoding as (sin, cos) places them adjacent in 2D space,
- * which is the correct semantics for PCA and distance-based algorithms.
- */
+// trích 12 feature mỗi xe mỗi 1h — đầu vào cho PCA offline
 public class VehicleFeatureExtractor
         extends ProcessWindowFunction<BusEvent, VehicleFeatureVector, String, TimeWindow> {
 
@@ -48,10 +27,10 @@ public class VehicleFeatureExtractor
         sorted.sort((a, b) -> Long.compare(a.datetime, b.datetime));
 
         int hourOfDay = Instant.ofEpochMilli(ctx.window().getStart())
-                .atZone(ZoneOffset.ofHours(7)) // ICT = UTC+7
+                .atZone(ZoneOffset.ofHours(7)) // giờ Việt Nam
                 .getHour();
 
-        // ── Speed stats ──────────────────────────────────────────────────
+        // tốc độ
         List<Double> speeds = new ArrayList<>();
         int idleCount = 0;
         for (BusEvent e : sorted) {
@@ -65,7 +44,7 @@ public class VehicleFeatureExtractor
         double stdSpeed = stdDev(speeds, avgSpeed);
         double idleFraction = sorted.isEmpty() ? 0 : (double) idleCount / sorted.size();
 
-        // ── Distance ─────────────────────────────────────────────────────
+        // khoảng cách
         double totalDist = 0;
         for (int i = 1; i < sorted.size(); i++) {
             BusEvent p = sorted.get(i - 1), c = sorted.get(i);
@@ -74,7 +53,7 @@ public class VehicleFeatureExtractor
             }
         }
 
-        // ── Sampling regularity ──────────────────────────────────────────
+        // độ đều của sampling
         List<Long> intervals = new ArrayList<>();
         for (int i = 1; i < sorted.size(); i++) {
             intervals.add(sorted.get(i).datetime - sorted.get(i - 1).datetime);
@@ -84,23 +63,23 @@ public class VehicleFeatureExtractor
         double avgInterval = intervalD.stream().mapToDouble(d -> d).average().orElse(0);
         double stdInterval = stdDev(intervalD, avgInterval);
 
-        // ── Heading changes ──────────────────────────────────────────────
+        // số lần rẽ
         int headingChanges = 0;
         for (int i = 1; i < sorted.size(); i++) {
             Double h1 = sorted.get(i - 1).heading;
             Double h2 = sorted.get(i).heading;
             if (h1 != null && h2 != null) {
                 double delta = Math.abs(h2 - h1);
-                if (delta > 180) delta = 360 - delta; // shortest angular distance
+                if (delta > 180) delta = 360 - delta; // góc nhỏ nhất
                 if (delta > HEADING_CHANGE_DEG) headingChanges++;
             }
         }
 
-        // ── Operational fractions ────────────────────────────────────────
+        // tỉ lệ bật máy / điều hòa
         long ignitionOn = sorted.stream().filter(e -> Boolean.TRUE.equals(e.ignition)).count();
         long airconOn   = sorted.stream().filter(e -> Boolean.TRUE.equals(e.aircon)).count();
 
-        // ── Build vector ─────────────────────────────────────────────────
+        // ghép vector
         VehicleFeatureVector vec = new VehicleFeatureVector();
         vec.vehicle                = vehicle;
         vec.routeNo                = sorted.get(0).routeNo;

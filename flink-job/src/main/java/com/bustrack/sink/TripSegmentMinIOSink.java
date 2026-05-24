@@ -13,9 +13,7 @@ import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Writes each TripSegment to MinIO under trips/{routeNo}/{date}/{vehicle}_{tripStart}.json
- */
+// ghi mỗi chuyến đi vào MinIO: trips/{routeNo}/{vehicle}_{tripStart}.json
 public class TripSegmentMinIOSink extends RichSinkFunction<TripSegment> {
 
     private static final Logger LOG = LoggerFactory.getLogger(TripSegmentMinIOSink.class);

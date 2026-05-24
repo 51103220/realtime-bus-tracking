@@ -4,21 +4,21 @@ import java.io.Serializable;
 
 public class BusEvent implements Serializable {
 
-    // ── Raw GPS fields ─────────────────────────────────────────────────────
+    // trường GPS thô
     public String vehicle;
     public String driver;
     public Long datetime;
-    public Double x;            // longitude
-    public Double y;            // latitude
-    public Double speed;        // optional
-    public Double heading;      // optional
+    public Double x;            // kinh độ
+    public Double y;            // vĩ độ
+    public Double speed;        // có thể null
+    public Double heading;      // có thể null
     public Boolean ignition;
     public Boolean aircon;
     public Boolean working;
-    public Boolean doorUp;      // optional
-    public Boolean doorDown;    // optional
+    public Boolean doorUp;      // có thể null
+    public Boolean doorDown;    // có thể null
 
-    // ── Enriched fields (populated by BusDeduplicator) ────────────────────
+    // trường được gắn thêm bởi BusDeduplicator
     public String routeId;
     public String routeNo;
 
