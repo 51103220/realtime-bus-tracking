@@ -5,6 +5,11 @@ const WS_URL =
     ? "ws://localhost:8000/ws/buses"
     : `ws://${window.location.hostname}:8000/ws/buses`;
 
+const API_URL =
+  window.location.hostname === "localhost"
+    ? "http://localhost:8000"
+    : `http://${window.location.hostname}:8000`;
+
 export default function useWebSocket() {
   const [buses, setBuses]           = useState(new Map());
   const [connected, setConnected]   = useState(false);
@@ -46,6 +51,15 @@ export default function useWebSocket() {
   }
 
   useEffect(() => {
+    fetch(`${API_URL}/buses`)
+      .then((res) => res.json())
+      .then((items) => {
+        setBuses(new Map(items.filter((bus) => bus.vehicle).map((bus) => [bus.vehicle, bus])));
+      })
+      .catch(() => {
+        // WebSocket updates will still populate the map if the initial fetch fails.
+      });
+
     connect();
     return () => {
       clearTimeout(reconnectTimer.current);
