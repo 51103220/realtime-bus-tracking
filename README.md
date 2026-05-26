@@ -8,11 +8,43 @@
 
 ## Quick Start
 
-Set `DATASET_PATH` in `.env` to the folder containing `sub_raw_*.json` files:
+Copy the example below into a `.env` file at the project root and set `DATASET_PATH` to the folder containing `sub_raw_*.json` files:
 
-```bash
-# .env
+```env
+# ── Replay Speed ──────────────────────────────────────────────────────────────
+# 0   = max throughput
+# 1.0 = real-time (based on the actual timestamps recorded in the data)
+# N   = Nx accelerated (e.g. 10 = 10x faster than real-time)
+REPLAY_SPEED=3
+
+# ── Kafka ─────────────────────────────────────────────────────────────────────
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+KAFKA_TOPIC=bus-gps-events
+KAFKA_PARTITIONS=3
+KAFKA_REPLICATION_FACTOR=1
+
+# ── Redis ─────────────────────────────────────────────────────────────────────
+REDIS_HOST=redis
+REDIS_PORT=6379
+BUS_STATE_TTL_SECONDS=3600
+
+# ── MinIO (local S3) ─────────────────────────────────────────────────────────
+MINIO_ENDPOINT=http://minio:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET=bus-history
+
+# ── Flink ─────────────────────────────────────────────────────────────────────
+FLINK_PARALLELISM=2
+WINDOW_SIZE_SECONDS=60
+WATERMARK_DELAY_SECONDS=30
+DEDUP_TTL_SECONDS=60
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
 DATASET_PATH=/path/to/BigData-Bus-DataSet
+
+# ── Grafana ───────────────────────────────────────────────────────────────────
+GF_ADMIN_PASSWORD=admin
 ```
 
 Then run:
@@ -48,7 +80,7 @@ Then run:
 
 ## Architecture
 
-![Pipeline Architecture](architecture.jpeg)
+![Pipeline Architecture](architecture.png)
 
 ```
 Bus GPS Files (32 GB)

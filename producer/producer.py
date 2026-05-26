@@ -102,13 +102,12 @@ def run():
             key = rec["vehicle"].encode()
 
             producer.produce(TOPIC, value=value, key=key, on_delivery=delivery_report)
-            producer.poll(0)
 
             prev_event_time = rec["datetime"]
             prev_wall_time  = time.monotonic()
             total_sent += 1
 
-            if total_sent % 50_000 == 0:
+            if total_sent % 20_000 == 0:
                 producer.flush()
                 print(f"[producer]   sent {total_sent:,} total records")
 

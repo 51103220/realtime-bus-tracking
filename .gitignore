@@ -22,6 +22,7 @@ notebooks/.ipynb_checkpoints/
 /tmp/*.png
 
 # Node / Dashboard
+node_modules/
 dashboard/node_modules/
 dashboard/dist/
 
